@@ -1,116 +1,101 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+from datetime import datetime
 import plotly.express as px
 
-# -----------------------
-# Load Model and Scaler
-# -----------------------
+# Load model & scaler
 try:
     model = joblib.load("rf_model.pkl")
     scaler = joblib.load("scaler.pkl")
 except:
-    st.warning("Model files not found. Please train the model first.")
+    st.warning("Model files missing. Run model.py first.")
 
-# -----------------------
-# App Layout
-# -----------------------
+# Page config
 st.set_page_config(page_title="PCOD Risk App", layout="wide")
 st.title("🩺 PCOD Risk Detection Dashboard")
 
 # -----------------------
-# User Input Section
+# User Input Form
 # -----------------------
-st.header("Enter Your Details")
-with st.form(key='user_form'):
+with st.form("user_form"):
+    st.header("Enter Your Details (Manual)")
+
     age = st.number_input("Age", min_value=12, max_value=60, value=25)
-    
-    weight = st.number_input("Weight (kg)", min_value=30, max_value=150, value=60)
-    height = st.number_input("Height (cm)", min_value=120, max_value=220, value=165)
-    bmi = round(weight / ((height/100)**2), 1)
-    st.info(f"Calculated BMI: {bmi}")
-    
-    cycle_length = st.number_input("Cycle Length (days)", min_value=20, max_value=60, value=30)
-    menstrual_irregularity = st.slider("Menstrual Irregularity (0 = None, 5 = Very irregular)", 0, 5, 2)
-    sleep_hours = st.number_input("Sleep Hours per night", min_value=3, max_value=12, value=7)
-    stress_level = st.slider("Stress Level (0 = None, 5 = Very High)", 0, 5, 2)
-    
-    # Symptoms
+    weight = st.number_input("Weight (kg)", 30.0, 120.0, 60.0)
+    height = st.number_input("Height (cm)", 130.0, 200.0, 160.0)
+    cycle_length = st.number_input("Cycle Length (days)", 20, 60, 30)
+    last_period = st.date_input("Last Period Start Date", datetime.today())
+    menstrual_history = st.number_input("Average cycle length last 3-6 cycles", 20, 60, 30)
+    fertility_issues = st.selectbox("Fertility Issues (if married)", [0,1])
+
     st.subheader("Symptoms (1 = Yes, 0 = No)")
     acne = st.selectbox("Acne", [0,1])
     hair_growth = st.selectbox("Excess Hair Growth", [0,1])
     weight_gain = st.selectbox("Weight Gain", [0,1])
-    
-    # Wearable HR input (simulated if no device)
-    st.subheader("Average Heart Rate from Wearable (bpm)")
-    wearable_data_available = st.checkbox("I have wearable HR data", value=False)
-    
-    if wearable_data_available:
-        hr_menstrual = st.number_input("Menstrual Phase HR", min_value=50, max_value=120, value=70)
-        hr_follicular = st.number_input("Follicular Phase HR", min_value=50, max_value=120, value=72)
-        hr_ovulatory = st.number_input("Ovulatory Phase HR", min_value=50, max_value=120, value=75)
-        hr_luteal = st.number_input("Luteal Phase HR", min_value=50, max_value=120, value=78)
-    else:
-        hr_menstrual = np.random.randint(65, 75)
-        hr_follicular = np.random.randint(68, 78)
-        hr_ovulatory = np.random.randint(70, 85)
-        hr_luteal = np.random.randint(72, 88)
-        st.info(f"Simulated HR (bpm) - Menstrual: {hr_menstrual}, Follicular: {hr_follicular}, Ovulatory: {hr_ovulatory}, Luteal: {hr_luteal}")
+    lifestyle_sedentary = st.selectbox("Sedentary Lifestyle", [0,1])
+    family_history = st.selectbox("Family History of Hormone Issues", [0,1])
 
-    submit_button = st.form_submit_button(label="Predict Risk")
+    st.subheader("Wearable Device Inputs (Automatic)")
+    heart_rate = st.number_input("Average Heart Rate (bpm)", 50, 120, 75)
+    body_temp = st.number_input("Body Temperature (°C)", 35.0, 38.0, 36.6)
+    sleep_hours = st.number_input("Sleep Hours per night", 3, 12, 7)
+    stress_hrv = st.number_input("Stress (HRV-based)", 20, 100, 50)
+
+    submit_button = st.form_submit_button("Predict Risk")
 
 # -----------------------
 # Prediction
 # -----------------------
 if submit_button:
+    # Auto BMI
+    bmi = round(weight / (height/100)**2,1)
+    irregularity = 1 if abs(cycle_length - menstrual_history) > 7 else 0
+
     input_df = pd.DataFrame({
-        "Age": [age],
-        "BMI": [bmi],
-        "CycleLength": [cycle_length],
-        "MenstrualIrregularity": [menstrual_irregularity],
-        "SleepHours": [sleep_hours],
-        "StressLevel": [stress_level],
-        "Acne": [acne],
-        "HairGrowth": [hair_growth],
-        "WeightGain": [weight_gain],
-        "HR_Menstrual": [hr_menstrual],
-        "HR_Follicular": [hr_follicular],
-        "HR_Ovulatory": [hr_ovulatory],
-        "HR_Luteal": [hr_luteal]
+        "Age":[age],
+        "BMI":[bmi],
+        "CycleLength":[cycle_length],
+        "Irregular":[irregularity],
+        "Symptoms_Acne":[acne],
+        "Symptoms_HairGrowth":[hair_growth],
+        "Symptoms_WeightGain":[weight_gain],
+        "Lifestyle_Sedentary":[lifestyle_sedentary],
+        "Hormone_FamilyHistory":[family_history],
+        "FertilityIssues":[fertility_issues],
+        "HR":[heart_rate],
+        "BodyTemp":[body_temp],
+        "SleepHours":[sleep_hours],
+        "Stress_HRV":[stress_hrv]
     })
 
     try:
-        # Scale numeric features
-        numeric_features = ["Age", "BMI", "CycleLength", "MenstrualIrregularity",
-                            "SleepHours", "StressLevel", "HR_Menstrual", "HR_Follicular",
-                            "HR_Ovulatory", "HR_Luteal"]
+        numeric_features = ["Age","BMI","CycleLength","HR","BodyTemp","SleepHours","Stress_HRV"]
         input_df[numeric_features] = scaler.transform(input_df[numeric_features])
-
-        # Predict
         prediction = model.predict(input_df)[0]
-        st.success(f"Your predicted PCOD Risk is: **{prediction}**")
+        st.success(f"✅ Your predicted PCOD Risk is: **{prediction}**")
     except:
-        st.error("Error predicting. Make sure the model files exist and are correct.")
+        st.error("Prediction error. Check model files.")
 
 # -----------------------
-# Simulated Dashboard Section
+# Dashboard / Phase-wise HR
 # -----------------------
-st.header("📊 Dashboard (Simulated Data)")
+st.header("📊 Dashboard (Simulated Phase-wise HR)")
 
-# HR Trend Across Phases
+# Calculate phase-wise HR from average HR & cycle info
+phase_offsets = {"Menstrual":-3,"Follicular":-1,"Ovulatory":+2,"Luteal":+4}
 hr_data = pd.DataFrame({
-    "Phase": ["Menstrual", "Follicular", "Ovulatory", "Luteal"],
-    "HeartRate": [hr_menstrual, hr_follicular, hr_ovulatory, hr_luteal]
+    "Phase": list(phase_offsets.keys()),
+    "HeartRate": [heart_rate + v for v in phase_offsets.values()]
 })
-fig_hr = px.line(hr_data, x="Phase", y="HeartRate", title="Heart Rate Across Menstrual Phases", markers=True)
+fig_hr = px.bar(hr_data, x="Phase", y="HeartRate", title="Estimated Phase-wise Heart Rate")
 st.plotly_chart(fig_hr, use_container_width=True)
 
-# Symptoms Summary
+# Symptoms summary
 symptoms = pd.DataFrame({
-    "Symptom": ["Acne", "Excess Hair Growth", "Weight Gain"],
-    "Presence": [acne, hair_growth, weight_gain]
+    "Symptom":["Acne","Hair Growth","Weight Gain"],
+    "Presence":[acne,hair_growth,weight_gain]
 })
 fig_sym = px.bar(symptoms, x="Symptom", y="Presence", title="Symptoms Summary", range_y=[0,1])
 st.plotly_chart(fig_sym, use_container_width=True)
@@ -120,26 +105,26 @@ sleep_data = pd.DataFrame({
     "Day": np.arange(1,8),
     "SleepHours": np.random.randint(5,9, size=7)
 })
-fig_sleep = px.line(sleep_data, x="Day", y="SleepHours", title="Sleep Hours Trend Over 7 Days", markers=True)
+fig_sleep = px.line(sleep_data, x="Day", y="SleepHours", title="Sleep Hours Trend")
 st.plotly_chart(fig_sleep, use_container_width=True)
 
 # -----------------------
-# Tips / Suggestions
+# Lifestyle Tips
 # -----------------------
 if submit_button:
     st.header("💡 Lifestyle Suggestions")
-    if prediction == "High":
+    if prediction=="High":
         st.info("""
         - Consult a doctor for proper diagnosis  
-        - Maintain a healthy diet and exercise regularly  
-        - Track your cycle and symptoms daily  
+        - Maintain healthy diet & exercise  
+        - Track cycle & symptoms daily  
         - Reduce stress and ensure proper sleep
         """)
-    elif prediction == "Medium":
+    elif prediction=="Medium":
         st.info("""
-        - Monitor your symptoms and cycle  
-        - Maintain a balanced diet and exercise  
-        - Use this app to track trends regularly
+        - Monitor symptoms & cycle regularly  
+        - Maintain balanced diet & activity  
+        - Track trends using this app
         """)
     else:
-        st.success("Your risk is low. Keep maintaining a healthy lifestyle!")
+        st.success("Low risk. Maintain healthy lifestyle!")
