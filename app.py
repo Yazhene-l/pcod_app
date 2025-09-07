@@ -2,129 +2,117 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-from datetime import datetime
-import plotly.express as px
+import matplotlib.pyplot as plt
 
-# Load model & scaler
-try:
-    model = joblib.load("rf_model.pkl")
-    scaler = joblib.load("scaler.pkl")
-except:
-    st.warning("Model files missing. Run model.py first.")
+# Load model and scaler
+rf_model = joblib.load("rf_model.pkl")
+scaler = joblib.load("scaler.pkl")
 
-# Page config
-st.set_page_config(page_title="PCOD Risk App", layout="wide")
-st.title("🩺 PCOD Risk Detection Dashboard")
+st.title("🌸 PCOD Risk Prediction App")
 
-# -----------------------
-# User Input Form
-# -----------------------
-with st.form("user_form"):
-    st.header("Enter Your Details (Manual)")
+st.header("👩 User Inputs (Manual)")
+age = st.number_input("Age (years)", 18, 45, 25)
+weight = st.number_input("Weight (kg)", 40, 120, 55)
+height = st.number_input("Height (cm)", 140, 200, 160)
+cycle_length = st.number_input("Average Cycle Length (days)", 21, 120, 30)
+menstrual_history = st.text_input("Last 3-6 Cycle Lengths (comma separated)", "28,30,32")
+acne = st.selectbox("Acne", [0,1])
+hair_growth = st.selectbox("Excess Hair Growth", [0,1])
+weight_gain = st.selectbox("Weight Gain", [0,1])
+sedentary = st.selectbox("Sedentary Lifestyle", [0,1])
+high_sugar = st.selectbox("High Sugar Intake", [0,1])
 
-    age = st.number_input("Age", min_value=12, max_value=60, value=25)
-    weight = st.number_input("Weight (kg)", 30.0, 120.0, 60.0)
-    height = st.number_input("Height (cm)", 130.0, 200.0, 160.0)
-    cycle_length = st.number_input("Cycle Length (days)", 20, 60, 30)
-    last_period = st.date_input("Last Period Start Date", datetime.today())
-    menstrual_history = st.number_input("Average cycle length last 3-6 cycles", 20, 60, 30)
-    fertility_issues = st.selectbox("Fertility Issues (if married)", [0,1])
+st.header("⌚ Device Inputs (Automatic)")
+hr = st.number_input("Average Heart Rate (bpm)", 50, 120, 70)
+body_temp = st.number_input("Body Temperature (°C)", 35.0, 40.0, 36.6, format="%.1f")
+stress_level = st.number_input("Stress Level (0-5)", 0.0, 5.0, 2.5, format="%.1f")
+sleep_hours = st.number_input("Sleep Hours", 0, 12, 7)
 
-    st.subheader("Symptoms (1 = Yes, 0 = No)")
-    acne = st.selectbox("Acne", [0,1])
-    hair_growth = st.selectbox("Excess Hair Growth", [0,1])
-    weight_gain = st.selectbox("Weight Gain", [0,1])
-    lifestyle_sedentary = st.selectbox("Sedentary Lifestyle", [0,1])
-    family_history = st.selectbox("Family History of Hormone Issues", [0,1])
+# Compute menstrual irregularity
+history_list = [int(x.strip()) for x in menstrual_history.split(",")]
+menstrual_irregularity = np.std(history_list)
 
-    st.subheader("Wearable Device Inputs (Automatic)")
-    heart_rate = st.number_input("Average Heart Rate (bpm)", 50, 120, 75)
-    body_temp = st.number_input("Body Temperature (°C)", 35.0, 38.0, 36.6)
-    sleep_hours = st.number_input("Sleep Hours per night", 3, 12, 7)
-    stress_hrv = st.number_input("Stress (HRV-based)", 20, 100, 50)
+# Approximate phase-wise HR
+hr_menstrual = hr
+hr_follicular = hr + 2
+hr_ovulatory = hr + 5
+hr_luteal = hr + 8
 
-    submit_button = st.form_submit_button("Predict Risk")
+# Compute BMI
+bmi = round(weight / (height/100)**2, 1)
 
-# -----------------------
+# Prepare input DataFrame
+input_data = pd.DataFrame([{
+    "Age": age,
+    "Weight": weight,
+    "Height": height,
+    "CycleLength": cycle_length,
+    "MenstrualIrregularity": menstrual_irregularity,
+    "Acne": acne,
+    "HairGrowth": hair_growth,
+    "WeightGain": weight_gain,
+    "Sedentary": sedentary,
+    "HighSugar": high_sugar,
+    "HR_Menstrual": hr_menstrual,
+    "HR_Follicular": hr_follicular,
+    "HR_Ovulatory": hr_ovulatory,
+    "HR_Luteal": hr_luteal,
+    "BodyTemp": body_temp,
+    "SleepHours": sleep_hours,
+    "StressLevel": stress_level,
+    "BMI": bmi
+}])
+
+# Scale numeric features
+numeric_features = ["Age", "Weight", "Height", "CycleLength", "MenstrualIrregularity",
+                    "HR_Menstrual", "HR_Follicular", "HR_Ovulatory", "HR_Luteal",
+                    "BodyTemp", "SleepHours", "StressLevel", "BMI"]
+input_data[numeric_features] = scaler.transform(input_data[numeric_features])
+
 # Prediction
-# -----------------------
-if submit_button:
-    # Auto BMI
-    bmi = round(weight / (height/100)**2,1)
-    irregularity = 1 if abs(cycle_length - menstrual_history) > 7 else 0
+if st.button("🔮 Predict PCOD Risk"):
+    prediction = rf_model.predict(input_data)[0]
+    st.success(f"Predicted PCOD Risk: {prediction}")
 
-    input_df = pd.DataFrame({
-        "Age":[age],
-        "BMI":[bmi],
-        "CycleLength":[cycle_length],
-        "Irregular":[irregularity],
-        "Symptoms_Acne":[acne],
-        "Symptoms_HairGrowth":[hair_growth],
-        "Symptoms_WeightGain":[weight_gain],
-        "Lifestyle_Sedentary":[lifestyle_sedentary],
-        "Hormone_FamilyHistory":[family_history],
-        "FertilityIssues":[fertility_issues],
-        "HR":[heart_rate],
-        "BodyTemp":[body_temp],
-        "SleepHours":[sleep_hours],
-        "Stress_HRV":[stress_hrv]
-    })
-
-    try:
-        numeric_features = ["Age","BMI","CycleLength","HR","BodyTemp","SleepHours","Stress_HRV"]
-        input_df[numeric_features] = scaler.transform(input_df[numeric_features])
-        prediction = model.predict(input_df)[0]
-        st.success(f"✅ Your predicted PCOD Risk is: **{prediction}**")
-    except:
-        st.error("Prediction error. Check model files.")
-
-# -----------------------
-# Dashboard / Phase-wise HR
-# -----------------------
-st.header("📊 Dashboard (Simulated Phase-wise HR)")
-
-# Calculate phase-wise HR from average HR & cycle info
-phase_offsets = {"Menstrual":-3,"Follicular":-1,"Ovulatory":+2,"Luteal":+4}
-hr_data = pd.DataFrame({
-    "Phase": list(phase_offsets.keys()),
-    "HeartRate": [heart_rate + v for v in phase_offsets.values()]
-})
-fig_hr = px.bar(hr_data, x="Phase", y="HeartRate", title="Estimated Phase-wise Heart Rate")
-st.plotly_chart(fig_hr, use_container_width=True)
-
-# Symptoms summary
-symptoms = pd.DataFrame({
-    "Symptom":["Acne","Hair Growth","Weight Gain"],
-    "Presence":[acne,hair_growth,weight_gain]
-})
-fig_sym = px.bar(symptoms, x="Symptom", y="Presence", title="Symptoms Summary", range_y=[0,1])
-st.plotly_chart(fig_sym, use_container_width=True)
-
-# Sleep trend (simulated)
-sleep_data = pd.DataFrame({
-    "Day": np.arange(1,8),
-    "SleepHours": np.random.randint(5,9, size=7)
-})
-fig_sleep = px.line(sleep_data, x="Day", y="SleepHours", title="Sleep Hours Trend")
-st.plotly_chart(fig_sleep, use_container_width=True)
-
-# -----------------------
-# Lifestyle Tips
-# -----------------------
-if submit_button:
-    st.header("💡 Lifestyle Suggestions")
-    if prediction=="High":
-        st.info("""
-        - Consult a doctor for proper diagnosis  
-        - Maintain healthy diet & exercise  
-        - Track cycle & symptoms daily  
-        - Reduce stress and ensure proper sleep
-        """)
-    elif prediction=="Medium":
-        st.info("""
-        - Monitor symptoms & cycle regularly  
-        - Maintain balanced diet & activity  
-        - Track trends using this app
-        """)
+    # --- Suggestions ---
+    st.subheader("💡 Suggestions")
+    if prediction == "Low":
+        st.info("✅ Maintain your healthy lifestyle. Keep exercising and eating balanced meals.")
+    elif prediction == "Medium":
+        st.warning("⚠️ You may be at moderate risk. Track your cycles, manage stress, and consult a gynecologist if irregularities persist.")
     else:
-        st.success("Low risk. Maintain healthy lifestyle!")
+        st.error("🚨 High risk detected. Please consult a healthcare professional for further evaluation and management.")
+
+    # --- Phase-wise Heart Rate Comparison Graph ---
+    st.subheader("📊 Heart Rate Comparison (You vs Average PCOD / Non-PCOD)")
+    phases = ["Menstrual", "Follicular", "Ovulatory", "Luteal"]
+    your_hr = [hr_menstrual, hr_follicular, hr_ovulatory, hr_luteal]
+    pcod_avg = [78, 80, 83, 85]  # assumed higher HR for PCOD
+    non_pcod_avg = [70, 72, 75, 78]  # normal averages
+
+    fig, ax = plt.subplots()
+    ax.plot(phases, your_hr, marker='o', label="You")
+    ax.plot(phases, pcod_avg, marker='o', label="PCOD Avg")
+    ax.plot(phases, non_pcod_avg, marker='o', label="Non-PCOD Avg")
+    ax.set_ylabel("Heart Rate (bpm)")
+    ax.set_title("Cycle Phase vs Heart Rate")
+    ax.legend()
+    st.pyplot(fig)
+
+    # --- BMI Comparison ---
+    st.subheader("📊 BMI Comparison")
+    fig2, ax2 = plt.subplots()
+    categories = ["You", "PCOD Avg", "Non-PCOD Avg"]
+    values = [bmi, 28, 22]  # example averages
+    ax2.bar(categories, values, color=["blue","red","green"])
+    ax2.set_ylabel("BMI")
+    st.pyplot(fig2)
+
+    # --- Stress Comparison ---
+    st.subheader("📊 Stress Level Comparison")
+    fig3, ax3 = plt.subplots()
+    categories = ["You", "PCOD Avg", "Non-PCOD Avg"]
+    values = [stress_level, 4, 2]
+    ax3.bar(categories, values, color=["blue","red","green"])
+    ax3.set_ylabel("Stress Level (0-5)")
+    st.pyplot(fig3)
