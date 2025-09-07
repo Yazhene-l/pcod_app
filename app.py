@@ -1,71 +1,119 @@
 # app.py
 import streamlit as st
+import pandas as pd
 import numpy as np
 import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
 
-# Load model and scaler
-rf_model = joblib.load("rf_model.pkl")
-scaler = joblib.load("scaler.pkl")
+# -----------------------
+# Load Model and Scaler
+# -----------------------
+try:
+    model = joblib.load("rf_model.pkl")
+    scaler = joblib.load("scaler.pkl")
+except:
+    st.warning("Model files not found. Please train the model first.")
 
-st.title("Advanced PCOD Risk Detection App")
+# -----------------------
+# App Layout
+# -----------------------
+st.set_page_config(page_title="PCOD Risk App", layout="wide")
+st.title("🩺 PCOD Risk Detection Dashboard")
 
-# User Input Form
-with st.form("pcod_form"):
-    st.header("Enter Your Details")
-
-    # Personal Info
-    age = st.number_input("Age", min_value=10, max_value=60, value=25)
-    weight = st.number_input("Weight (kg)", min_value=30, max_value=150, value=60)
-    height = st.number_input("Height (cm)", min_value=100, max_value=220, value=160)
-
-    # Wearable + Health Metrics
+# -----------------------
+# User Input Section
+# -----------------------
+st.header("Enter Your Details")
+with st.form(key='user_form'):
+    age = st.number_input("Age", min_value=12, max_value=60, value=25)
+    bmi = st.number_input("BMI", min_value=10.0, max_value=50.0, value=22.0)
+    cycle_length = st.number_input("Cycle Length (days)", min_value=20, max_value=60, value=30)
+    sleep_hours = st.number_input("Sleep Hours per night", min_value=3, max_value=12, value=7)
     heart_rate = st.number_input("Average Heart Rate (bpm)", min_value=50, max_value=120, value=75)
-    sleep_hours = st.number_input("Average Sleep Hours", min_value=0, max_value=12, value=7)
-
-    # Menstrual Cycle Info
-    cycle_length = st.number_input("Cycle Length (days)", min_value=15, max_value=60, value=30)
-    cycle_regular = st.radio("Is your cycle regular?", ("Yes", "No"))
-
+    
     # Symptoms
-    acne = st.radio("Do you have acne?", ("Yes", "No"))
-    hair_growth = st.radio("Excess hair growth?", ("Yes", "No"))
-    weight_gain = st.radio("Recent weight gain?", ("Yes", "No"))
-    mood_swings = st.radio("Mood swings?", ("Yes", "No"))
-    fatigue = st.radio("Fatigue?", ("Yes", "No"))
+    st.subheader("Symptoms (1 = Yes, 0 = No)")
+    acne = st.selectbox("Acne", [0,1])
+    hair_growth = st.selectbox("Excess Hair Growth", [0,1])
+    weight_gain = st.selectbox("Weight Gain", [0,1])
+    
+    submit_button = st.form_submit_button(label="Predict Risk")
 
-    # Lifestyle
-    physical_activity = st.radio("Are you physically active?", ("Yes", "No"))
-    diet_quality = st.radio("Is your diet healthy?", ("Yes", "No"))
-    stress = st.slider("Stress Level (0-10)", 0, 10, 5)
+# -----------------------
+# Prediction
+# -----------------------
+if submit_button:
+    input_df = pd.DataFrame({
+        "Age": [age],
+        "BMI": [bmi],
+        "HeartRate": [heart_rate],
+        "SleepHours": [sleep_hours],
+        "CycleLength": [cycle_length],
+        "Acne": [acne],
+        "HairGrowth": [hair_growth],
+        "WeightGain": [weight_gain]
+    })
 
-    # Family History
-    family_history = st.radio("Family history of PCOD or diabetes?", ("Yes", "No"))
+    try:
+        # Scale numeric features
+        numeric_features = ["Age", "BMI", "HeartRate", "SleepHours", "CycleLength"]
+        input_df[numeric_features] = scaler.transform(input_df[numeric_features])
 
-    submit = st.form_submit_button("Predict Risk")
+        # Predict
+        prediction = model.predict(input_df)[0]
+        st.success(f"Your predicted PCOD Risk is: **{prediction}**")
+    except:
+        st.error("Error predicting. Make sure the model files exist and are correct.")
 
-if submit:
-    # Convert Yes/No to 1/0
-    acne = 1 if acne == "Yes" else 0
-    hair_growth = 1 if hair_growth == "Yes" else 0
-    weight_gain = 1 if weight_gain == "Yes" else 0
-    mood_swings = 1 if mood_swings == "Yes" else 0
-    fatigue = 1 if fatigue == "Yes" else 0
-    physical_activity = 1 if physical_activity == "Yes" else 0
-    diet_quality = 1 if diet_quality == "Yes" else 0
-    cycle_regular = 1 if cycle_regular == "Yes" else 0
-    family_history = 1 if family_history == "Yes" else 0
+# -----------------------
+# Simulated Dashboard Section
+# -----------------------
+st.header("📊 Dashboard (Simulated Data)")
 
-    # Calculate BMI
-    bmi = weight / ((height/100) ** 2)
+# Example Heart Rate trend over 7 days
+hr_data = pd.DataFrame({
+    "Day": np.arange(1,8),
+    "HeartRate": np.random.randint(65, 95, size=7)
+})
+fig_hr = px.line(hr_data, x="Day", y="HeartRate", title="Heart Rate Trend Over 7 Days")
+st.plotly_chart(fig_hr, use_container_width=True)
 
-    # Prepare feature array
-    user_data = np.array([[age, bmi, heart_rate, sleep_hours, cycle_length, cycle_regular,
-                           acne, hair_growth, weight_gain, mood_swings, fatigue,
-                           physical_activity, diet_quality, stress, family_history]])
+# Symptoms Summary
+symptoms = pd.DataFrame({
+    "Symptom": ["Acne", "Excess Hair Growth", "Weight Gain"],
+    "Presence": [acne, hair_growth, weight_gain]
+})
+fig_sym = px.bar(symptoms, x="Symptom", y="Presence", title="Symptoms Summary", range_y=[0,1])
+st.plotly_chart(fig_sym, use_container_width=True)
 
-    # Scale features
-    user_data_scaled = scaler.transform(user_data)
+# Sleep quality (simulated)
+sleep_data = pd.DataFrame({
+    "Day": np.arange(1,8),
+    "SleepHours": np.random.randint(5,9, size=7)
+})
+fig_sleep = px.line(sleep_data, x="Day", y="SleepHours", title="Sleep Hours Trend")
+st.plotly_chart(fig_sleep, use_container_width=True)
 
-    # Predict PCOD Risk
-    prediction = rf_model.predict(user_data_scaled)[0]
-    st.success(f"Your PCOD Risk Level: {prediction}")
+# -----------------------
+# Tips / Suggestions
+# -----------------------
+if submit_button:
+    st.header("💡 Lifestyle Suggestions")
+    if prediction == "High":
+        st.info("""
+        - Consult a doctor for proper diagnosis  
+        - Maintain a healthy diet and exercise regularly  
+        - Track your cycle and symptoms daily  
+        - Reduce stress and ensure proper sleep
+        """)
+    elif prediction == "Medium":
+        st.info("""
+        - Monitor your symptoms and cycle  
+        - Maintain a balanced diet and exercise  
+        - Use this app to track trends regularly
+        """)
+    else:
+        st.success("Your risk is low. Keep maintaining a healthy lifestyle!")
+
